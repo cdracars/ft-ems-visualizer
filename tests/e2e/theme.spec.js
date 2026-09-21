@@ -38,10 +38,12 @@ test('theme choices change the UI and 2D canvas, then survive a reload', async (
 
 test('changing the UI theme does not alter the 3D viewport', async ({ page }) => {
   await page.goto('/');
+  const hasThree = await page.evaluate(() => typeof window.THREE === 'object');
+  test.skip(!hasThree, 'Three.js CDN is unavailable in this test environment');
   await page.getByLabel('Printer Model').selectOption('v24-250');
   await page.getByRole('button', { name: '3D View' }).click();
 
-  const viewport = page.locator('#view-3d canvas');
+  const viewport = page.locator('#view-3d canvas:not(#topdown-draw-layer)');
   await expect(viewport).toBeVisible();
   const bounds = await viewport.boundingBox();
   const backgroundSample = {
@@ -55,4 +57,18 @@ test('changing the UI theme does not alter the 3D viewport', async ({ page }) =>
   await page.getByLabel('Color theme').selectOption('light');
   const light3d = await page.screenshot({ clip: backgroundSample });
   expect(light3d.equals(classic3d)).toBe(true);
+});
+
+test('user preferences survive a reload', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel('Printer Model').selectOption('v24-250');
+  await page.getByPlaceholder('🔍 Search components...').fill('fan');
+  await page.getByLabel('Color theme').selectOption('light');
+
+  await page.reload();
+
+  await expect(page.getByLabel('Printer Model')).toHaveValue('v24-250');
+  await expect(page.getByPlaceholder('🔍 Search components...')).toHaveValue('fan');
+  await expect(page.getByLabel('Color theme')).toHaveValue('light');
 });
