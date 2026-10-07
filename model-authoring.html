@@ -1,8 +1,15 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>FT EMS Model Authoring</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FT EMS Model Authoring</title>
+</head>
 <body>
-  <p>Opening model authoring…</p>
-  <script>location.replace('index.html?mode=authoring');</script>
+  <script>
+    const localHosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+    const mode = localHosts.has(location.hostname) ? '?mode=authoring' : '';
+    location.replace(`index.html${mode}`);
+  </script>
 </body>
 </html>
