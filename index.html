@@ -274,7 +274,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
       <button class="btn" id="model-draw-toggle" type="button" onclick="toggleModelDrawing()">Draw exclusion on canvas</button>
       <button class="btn" type="button" onclick="addModelExclusion()">Add exclusion</button>
       <button class="btn" id="authoring-rename" type="button" onclick="renameSelectedAuthoringZone()" disabled>Rename selected</button>
-      <button class="btn" type="button" onclick="exportModelDefinition()">Save model definition</button>
+      <details id="authoring-export">
+        <summary>Export model definition</summary>
+        <button class="btn" type="button" onclick="exportModelDefinition()">Save model definition</button>
+      </details>
       <div id="authoring-zone-list"></div>
     </fieldset>
     <fieldset id="custom-frame-controls" hidden>
@@ -288,7 +291,15 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
     </fieldset>
     <fieldset id="custom-exclusion-controls" hidden>
       <legend>Custom exclusions</legend>
+      <label for="custom-exclusion-id">ID<input aria-label="Custom exclusion ID" id="custom-exclusion-id" placeholder="rear-rail"></label>
       <label for="custom-exclusion-name">Name<input aria-label="Custom exclusion name" id="custom-exclusion-name" placeholder="Cable rail"></label>
+      <div class="control-grid">
+        <label for="custom-exclusion-x">X<input id="custom-exclusion-x" aria-label="Custom exclusion X" type="number" step="any" value="0"></label>
+        <label for="custom-exclusion-y">Y<input id="custom-exclusion-y" aria-label="Custom exclusion Y" type="number" step="any" value="0"></label>
+        <label for="custom-exclusion-width">Width<input id="custom-exclusion-width" aria-label="Custom exclusion width" type="number" min="0.01" step="any" value="50"></label>
+        <label for="custom-exclusion-height">Height<input id="custom-exclusion-height" aria-label="Custom exclusion height" type="number" min="0.01" step="any" value="20"></label>
+      </div>
+      <button class="btn" type="button" onclick="addCustomExclusion()">Add custom exclusion</button>
       <button class="btn" id="custom-draw-toggle" type="button" onclick="toggleModelDrawing()">Draw exclusion</button>
       <button class="btn" id="custom-exclusion-rename" type="button" onclick="renameSelectedCustomExclusion()" disabled>Rename selected</button>
       <div class="control-hint">Drag to move or resize; × deletes.</div>

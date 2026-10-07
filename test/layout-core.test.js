@@ -49,6 +49,12 @@ test('validation applies frame margin and required component padding', () => {
   assert.equal(validatePlacement({ ...a, x: 0 }, [], switchwire, { margin: 15 }), false);
 });
 
+test('validation treats omitted frame origin as zero for legacy printer records', () => {
+  const printer = { id: 'sw', w: 280, h: 177 };
+  const placed = [component('pi', 54, 91, { x: 22, y: 55 })];
+  assert.equal(validateLayout(placed, printer, { margin: 15 }), true);
+});
+
 test('placement diagnostics identify an overlapping exclusion zone', () => {
   const frame = {
     w: 100,

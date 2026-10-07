@@ -85,9 +85,11 @@ export function snapUpCoordinate(value: number, spacing = 11): number {
 export function isInsideFrame(component: LayoutComponent, frame: Rect, margin = 0): boolean {
   const bounds = getBounds(component);
   const safeMargin = Math.max(0, number(margin));
-  return bounds.x >= frame.x + safeMargin && bounds.y >= frame.y + safeMargin &&
-    bounds.x + bounds.w <= frame.x + frame.w - safeMargin &&
-    bounds.y + bounds.h <= frame.y + frame.h - safeMargin;
+  const frameX = number(frame.x);
+  const frameY = number(frame.y);
+  return bounds.x >= frameX + safeMargin && bounds.y >= frameY + safeMargin &&
+    bounds.x + bounds.w <= frameX + number(frame.w) - safeMargin &&
+    bounds.y + bounds.h <= frameY + number(frame.h) - safeMargin;
 }
 
 export function hasCollision(a: LayoutComponent, b: LayoutComponent, padding = 0): boolean {

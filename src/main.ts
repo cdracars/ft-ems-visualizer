@@ -581,7 +581,7 @@ function updateModelControls() {
   if (frameControls) frameControls.hidden = !custom;
   if (exclusionControls) exclusionControls.hidden = !custom;
   const dimensions = document.getElementById('frame-dimensions');
-  if (dimensions) dimensions.textContent = `${printer.name}: ${formatMm(printer.w)} × ${formatMm(printer.h)} mm`;
+  if (dimensions) dimensions.textContent = `${printer.id === 'custom' ? 'Custom frame' : printer.name}: ${formatMm(printer.w)} × ${formatMm(printer.h)} mm`;
   renderModelZones();
   renderCustomExclusions();
 }
@@ -602,6 +602,7 @@ function applyCustomFrame() {
 
 function addCustomExclusion() {
   const name = document.getElementById('custom-exclusion-name')?.value.trim() || 'Custom exclusion';
+  const id = document.getElementById('custom-exclusion-id')?.value.trim();
   const rect = {
     x: Number(document.getElementById('custom-exclusion-x')?.value),
     y: Number(document.getElementById('custom-exclusion-y')?.value),
@@ -609,12 +610,13 @@ function addCustomExclusion() {
     h: Number(document.getElementById('custom-exclusion-height')?.value),
   };
   if (!Object.values(rect).every(Number.isFinite) || rect.w <= 0 || rect.h <= 0) return;
-  addCustomExclusionFromRect(rect);
+  addCustomExclusionFromRect(rect, name, id);
 }
 
-function addCustomExclusionFromRect(rect, providedName) {
+function addCustomExclusionFromRect(rect, providedName, providedId) {
   const name = providedName || document.getElementById('custom-exclusion-name')?.value.trim() || 'Custom exclusion';
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'exclusion';
+  const base = (providedId || document.getElementById('custom-exclusion-id')?.value.trim() || name)
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'exclusion';
   let id = base;
   let suffix = 2;
   while (customExclusionZones.some(zone => zone.id === id)) id = `${base}-${suffix++}`;
@@ -668,7 +670,7 @@ function renderModelZones() {
   if (!list) return;
   list.replaceChildren(...(printer.exclusionZones || []).map(zone => {
     const row = document.createElement('div');
-    row.className = 'custom-zone-row';
+    row.className = 'custom-zone-row model-zone-row';
     row.classList.toggle('selected', zone.id === topDownSelectedZoneId);
     row.onclick = () => selectAuthoringZone(zone.id);
     const label = document.createElement('span');
@@ -710,7 +712,8 @@ function renderCustomExclusions() {
   if (!list) return;
   list.replaceChildren(...customExclusionZones.map(zone => {
     const row = document.createElement('div');
-    row.className = 'custom-zone-row';
+    row.className = 'custom-zone-row model-zone-row';
+    row.dataset.testid = 'custom-exclusion-row';
     row.classList.toggle('selected', zone.id === topDownSelectedZoneId);
     row.title = 'Select exclusion';
     row.onclick = () => selectCustomExclusion(zone.id);
@@ -743,6 +746,7 @@ function deleteCustomExclusion(id) {
 function syncCustomExclusionInputs(zone) {
   if (!zone) return;
   const values = {
+    'custom-exclusion-id': zone.id,
     'custom-exclusion-name': zone.name || zone.id,
     'custom-exclusion-x': formatMm(zone.rect?.x),
     'custom-exclusion-y': formatMm(zone.rect?.y),
@@ -1025,7 +1029,8 @@ function hitExclusionZone(mx, my) {
 function checkCollisions() {
   for (const c of placed) c._col = false;
   for (let i = 0; i < placed.length; i++) {
-    const a = getBounds(placed[i]);
+    const c = placed[i];
+    const a = getBounds(c);
     for (let j = i + 1; j < placed.length; j++) {
       const b = getBounds(placed[j]);
       // Include padding around each component for cable duct clearance
@@ -1154,20 +1159,29 @@ function draw() {
 
   // Printer/model exclusion zones. These are deliberately visible in 2D so
   // placement constraints are understandable before an auto-placement run.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, printer.w, printer.h);
+  ctx.clip();
   for (const zone of printer.exclusionZones || []) {
-    const rect = zone.rect;
-    if (!rect) continue;
+    const points = LayoutCore.getExclusionPoints(zone);
+    if (points.length < 3) continue;
     ctx.fillStyle = 'rgba(233,69,96,0.18)';
     ctx.strokeStyle = zone.id === topDownSelectedZoneId ? '#ffffff' : 'rgba(233,69,96,0.85)';
     ctx.lineWidth = 1 / scale;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
     ctx.fillStyle = 'rgba(255,220,225,0.9)';
     ctx.font = `${Math.max(6, 9 / scale)}px sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(zone.name || zone.id, rect.x + 2, rect.y + 2);
+    ctx.fillText(zone.name || zone.id, points[0].x + 2, points[0].y + 2);
   }
+  ctx.restore();
 
   // Preview the exclusion rectangle while drawing it on the canvas.
   if (modelDrawing && modelDrawStart && modelDrawCurrent) {
@@ -1303,6 +1317,44 @@ function setupCanvasEvents() {
   cvs.addEventListener('wheel', onWheel, { passive: false });
   cvs.addEventListener('contextmenu', e => e.preventDefault());
   document.addEventListener('keydown', onKey);
+
+  const topDownSurface = document.getElementById('topdown-draw-layer');
+  if (topDownSurface) {
+    let start = null;
+    const toPrinterPoint = event => {
+      const bounds = topDownSurface.getBoundingClientRect();
+      return {
+        x: (event.clientX - bounds.left) / bounds.width * printer.w,
+        y: (event.clientY - bounds.top) / bounds.height * printer.h,
+      };
+    };
+    topDownSurface.addEventListener('pointerdown', event => {
+      if (!modelDrawing || !AUTHORING_MODE || !topDown3D || printer.id === 'custom') return;
+      start = toPrinterPoint(event);
+      topDownSurface.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    topDownSurface.addEventListener('pointerup', event => {
+      if (!start) return;
+      const end = toPrinterPoint(event);
+      const rect = {
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        w: Math.abs(end.x - start.x),
+        h: Math.abs(end.y - start.y),
+      };
+      start = null;
+      if (rect.w > 0.1 && rect.h > 0.1) {
+        const input = document.getElementById('model-zone-name');
+        if (input && !input.value.trim()) input.value = 'Drawn exclusion';
+        addModelExclusionFromRect(rect);
+      }
+      modelDrawing = false;
+      const button = document.getElementById('model-draw-toggle');
+      if (button) button.textContent = 'Draw exclusion on canvas';
+      event.preventDefault();
+    });
+  }
 }
 
 function onMouseDown(e) {
@@ -2180,6 +2232,10 @@ function saveLayout() {
   const data = {
     version: 5,
     printer: printer.id,
+    ...(printer.id === 'custom' ? {
+      customFrame: { width: printer.w, height: printer.h },
+      exclusionZones: printer.exclusionZones || [],
+    } : {}),
     printerDefinition: {
       id: printer.id,
       name: printer.name,
@@ -2206,10 +2262,13 @@ function loadLayout() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (data.printer === 'custom' && data.printerDefinition?.frame) {
-          const frame = data.printerDefinition.frame;
-          customExclusionZones = data.printerDefinition.exclusionZones || [];
-          customPrinter = { id: 'custom', name: data.printerDefinition.name || `Custom — ${frame.w}×${frame.h}mm`, w: Number(frame.w), h: Number(frame.h), exclusionZones: customExclusionZones };
+        if (data.printer === 'custom' && (data.printerDefinition?.frame || data.customFrame)) {
+          const frame = data.printerDefinition?.frame || {
+            w: data.customFrame.width,
+            h: data.customFrame.height,
+          };
+          customExclusionZones = data.printerDefinition?.exclusionZones || data.exclusionZones || [];
+          customPrinter = { id: 'custom', name: data.printerDefinition?.name || `Custom — ${frame.w}×${frame.h}mm`, w: Number(frame.w), h: Number(frame.h), exclusionZones: customExclusionZones };
           printer = customPrinter;
           document.getElementById('printer').value = 'custom';
         } else if (data.printer) {
@@ -2266,13 +2325,23 @@ function exportImage() {
     }
   }
   ex.strokeStyle = themeColor('--canvas-border'); ex.lineWidth = 1.5; ex.strokeRect(0, 0, printer.w, printer.h);
+  ex.save();
+  ex.beginPath();
+  ex.rect(0, 0, printer.w, printer.h);
+  ex.clip();
   for (const zone of printer.exclusionZones || []) {
-    if (!zone.rect) continue;
+    const points = LayoutCore.getExclusionPoints(zone);
+    if (points.length < 3) continue;
     ex.fillStyle = 'rgba(233,69,96,0.22)';
     ex.strokeStyle = 'rgba(233,69,96,0.9)';
-    ex.fillRect(zone.rect.x, zone.rect.y, zone.rect.w, zone.rect.h);
-    ex.strokeRect(zone.rect.x, zone.rect.y, zone.rect.w, zone.rect.h);
+    ex.beginPath();
+    ex.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) ex.lineTo(point.x, point.y);
+    ex.closePath();
+    ex.fill();
+    ex.stroke();
   }
+  ex.restore();
   for (const c of placed) {
     const b = getBounds(c);
     ex.fillStyle = hexRgba(c.catColor, 0.3); ex.fillRect(b.x, b.y, b.w, b.h);
@@ -3605,7 +3674,7 @@ function autoPlaceExisting() {
 // ============== GO ==============
 
 // Temporary compatibility bridge for the existing inline HTML handlers.
-  Object.assign(window, {
+Object.assign(window, {
   setView, saveLayout, loadLayout, clearLayout, exportImage, showSuggestLayout,
   autoPlaceExisting, setTheme, onPrinterChange, onSearch, duplicateSelected,
   rotateComponent, toggleSelectedLock, removeSelected, showChecklist,
@@ -3614,7 +3683,27 @@ function autoPlaceExisting() {
   LayoutCore, THREE,
   exportChecklistCSV, wizardFilter, runSuggestLayout,
 });
-Object.defineProperty(window, 'selected', { get: () => selected });
+if (LOCAL_DEVELOPMENT) {
+  Object.defineProperties(window, {
+    printer: { configurable: true, get: () => printer, set: value => { printer = value; } },
+    placed: { configurable: true, get: () => placed, set: value => { placed = value; } },
+    currentView: { configurable: true, get: () => currentView, set: value => { currentView = value; } },
+    topDown3D: { configurable: true, get: () => topDown3D, set: value => { topDown3D = value; } },
+    topDownSelectedZoneId: { configurable: true, get: () => topDownSelectedZoneId, set: value => { topDownSelectedZoneId = value; } },
+    controls3d: { configurable: true, get: () => controls3d, set: value => { controls3d = value; } },
+    panX: { configurable: true, get: () => panX, set: value => { panX = value; } },
+    panY: { configurable: true, get: () => panY, set: value => { panY = value; } },
+    scale: { configurable: true, get: () => scale, set: value => { scale = value; } },
+    stlCache: { configurable: true, get: () => stlCache, set: value => { stlCache = value; } },
+    scene3d: { configurable: true, get: () => scene3d, set: value => { scene3d = value; } },
+    camera3d: { configurable: true, get: () => camera3d, set: value => { camera3d = value; } },
+    FRAME_MARGIN: { configurable: true, get: () => FRAME_MARGIN },
+    COMP_PAD: { configurable: true, get: () => COMP_PAD },
+  });
+  Object.assign(window, { draw, updateBOM, build3DScene });
+}
+Object.defineProperty(window, 'selected', { configurable: true, get: () => selected, set: value => { selected = value; } });
+if (LOCAL_DEVELOPMENT) Object.defineProperty(window, 'ctx', { configurable: true, get: () => ctx });
 
 console.log('🚀 FT EMS VISUALIZER LOADED - Build 2026-03-05-15:21 - NUCLEAR ANTI-CLUSTER v2.0 ACTIVE - GITHUB SYNC TEST');
 init(); centerView();
