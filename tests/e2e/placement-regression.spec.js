@@ -253,7 +253,7 @@ test('manual exclusion violations remain in place and display their reason', asy
   });
 
   await page.locator('#canvas').click({ position: clickPoint });
-  await expect(page.locator('#canvas-info')).toHaveText('Inside exclusion: Test corner');
+  await expect(page.locator('#canvas-info')).toHaveText('Manual fixture: Inside exclusion: Test corner');
   expect(await page.evaluate(() => ({ x: placed[0].x, y: placed[0].y, invalid: placed[0]._col })))
     .toEqual({ x: 20, y: 20, invalid: true });
 });

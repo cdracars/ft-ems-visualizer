@@ -1049,8 +1049,9 @@ function checkCollisions() {
   const info = document.getElementById('canvas-info');
   const metadataIssue = LayoutCore.validateExclusionZones(printer.exclusionZones || [])[0];
   const firstIssue = placed.flatMap(c => c._issues || [])[0];
+  const issueComponent = firstIssue && placed.find(c => c.id === firstIssue.componentId);
   if (metadataIssue) info.textContent = `Invalid exclusion metadata: ${metadataIssue.zoneId || 'zone'} (${metadataIssue.reason})`;
-  else if (firstIssue?.type === 'excluded-area') info.textContent = `Inside exclusion: ${firstIssue.zoneName || firstIssue.zoneId}`;
+  else if (firstIssue?.type === 'excluded-area') info.textContent = `${issueComponent?.name ? `${issueComponent.name}: ` : ''}Inside exclusion: ${firstIssue.zoneName || firstIssue.zoneId}`;
   else if (firstIssue?.type === 'outside-frame') info.textContent = 'Outside frame bounds';
   else if (currentView === '2d') info.textContent = 'Scroll: Zoom | Alt+Drag: Pan | R: Rotate | D: Duplicate | L: Lock | Del: Remove';
 }
@@ -1990,9 +1991,19 @@ function build3DScene() {
       // Wrap in outer group to rotate around world origin after centering
       const frameWrapper = new THREE.Group();
       frameWrapper.add(frameGroup);
+      frameWrapper.userData.frameId = printer.id;
       // Rotate so thinnest native axis → Y (up): native is ~470x470x68
       const dims = [{a:'x',v:combSize.x},{a:'y',v:combSize.y},{a:'z',v:combSize.z}].sort((a,b)=>a.v-b.v);
-      if (dims[0].a === 'z') frameWrapper.rotation.x = -Math.PI/2;
+      if (dims[0].a === 'z') {
+        // Switchwire panels use native Y as the 2D frame width and native X as
+        // depth. Put the thin native Z axis upright without swapping that view.
+        const axisMap = new THREE.Matrix4().makeBasis(
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3(1, 0, 0),
+          new THREE.Vector3(0, 1, 0),
+        );
+        frameWrapper.rotation.setFromRotationMatrix(axisMap);
+      }
       else if (dims[0].a === 'x') frameWrapper.rotation.z = -Math.PI/2;
       else if (dims[0].a === 'y') { /* already correct */ }
       frameWrapper.userData.dynamic = true;
